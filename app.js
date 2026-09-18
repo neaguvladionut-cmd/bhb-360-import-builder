@@ -11,14 +11,16 @@ function normalizeEmail(value) { return normalizeText(value).toLocaleLowerCase("
 function normalizeLanguage(value) { return normalizeText(value).toUpperCase(); }
 function isValidEmail(value) { return EMAIL_RE.test(normalizeEmail(value)); }
 function fold(value) { return normalizeText(value).normalize("NFD").replace(/[\u0300-\u036f]/gu, "").toLocaleLowerCase("en-US"); }
+function roleKey(value) { return fold(value).replace(/[\s_-]+/gu, ""); }
+function isSelfRole(value) { return roleKey(value) === "autoevaluare"; }
 
 function mapRole(value) {
-  const key = fold(value);
+  const key = roleKey(value);
   if (key === "autoevaluare") return "Manager";
-  if (key === "manager" || key === "functional manager") return "Manager";
+  if (key === "manager" || key === "functionalmanager") return "Manager";
   if (key === "peer" || key === "coleg") return "Peer";
   if (key === "subordonat") return "Subordonat";
-  if (key === "stakeholder" || key === "partener" || key === "partenerextern" || key === "partener extern") return "PartenerExtern";
+  if (key === "stakeholder" || key === "partener" || key === "partenerextern") return "PartenerExtern";
   return null;
 }
 
@@ -51,7 +53,7 @@ function parseCollectorRows(rows, headerIndex, sourceName, normalizations) {
       participantName: normalizeText(row[0]), participantEmail,
       evaluatorName: normalizeText(row[2]), evaluatorEmail,
       sourceRole, role: mapRole(sourceRole), language: normalizeLanguage(row[5]),
-      isSelf: fold(row[6]) === "da" || fold(row[6]) === "yes" || sourceRole === "Autoevaluare" || (participantEmail && participantEmail === evaluatorEmail),
+      isSelf: fold(row[6]) === "da" || fold(row[6]) === "yes" || isSelfRole(sourceRole) || (participantEmail && participantEmail === evaluatorEmail),
       source: sourceName, rowNumber, legacy: false,
     };
   });
@@ -75,15 +77,15 @@ function parseLegacyRows(rows, headerIndex, sourceName, normalizations) {
     const sourceRole = normalizeText(row[roleIndex]);
     if (!sourceRole && !normalizeText(row[emailIndex]) && !normalizeText(row[lastNameIndex]) && !normalizeText(row[firstNameIndex])) return null;
     const rowNumber = headerIndex + index + 2;
-    const evaluatorName = normalizeText([row[firstNameIndex], row[lastNameIndex]].filter(Boolean).join(" "));
+    const evaluatorName = normalizeText([row[lastNameIndex], row[firstNameIndex]].filter(Boolean).join(" "));
     const evaluatorEmail = normalizeEmail(row[emailIndex]);
-    recordNormalization(normalizations, sourceName, rowNumber, "EvaluatorName", [row[firstNameIndex], row[lastNameIndex]].filter(Boolean).join(" "), evaluatorName);
+    recordNormalization(normalizations, sourceName, rowNumber, "EvaluatorName", [row[lastNameIndex], row[firstNameIndex]].filter(Boolean).join(" "), evaluatorName);
     recordNormalization(normalizations, sourceName, rowNumber, "EvaluatorEmail", row[emailIndex], evaluatorEmail);
     recordNormalization(normalizations, sourceName, rowNumber, "Relationship", row[roleIndex], sourceRole);
     recordNormalization(normalizations, sourceName, rowNumber, "ProductionRole", sourceRole, mapRole(sourceRole) || sourceRole);
     return {
       evaluatorName, evaluatorEmail, sourceRole, role: mapRole(sourceRole), language: "RO",
-      isSelf: fold(sourceRole) === "autoevaluare", source: sourceName, rowNumber, legacy: true,
+      isSelf: isSelfRole(sourceRole), source: sourceName, rowNumber, legacy: true,
     };
   }).filter(Boolean);
   const self = parsedRows.find((row) => row.isSelf);
@@ -315,7 +317,7 @@ function createProductionWorkbook(XLSX, analysis, projectName) {
     const excelRow = index + 2;
     const values = [row.identifier,row.participantName,row.participantEmail,row.evaluatorName,row.evaluatorEmail,row.role,normalizeText(projectName),row.language,"","","","",""];
     values.forEach((value, column) => { sheet[XLSX.utils.encode_cell({ r: index + 1, c: column })] = textCell(value); });
-    sheet[XLSX.utils.encode_cell({ r: index + 1, c: 13 })] = { t: "str", f: `CONCAT(G${excelRow}," - ",B${excelRow}," - ",D${excelRow})`, v: "" };
+    sheet[XLSX.utils.encode_cell({ r: index + 1, c: 13 })] = { t: "str", f: `G${excelRow}&" - "&B${excelRow}&" - "&D${excelRow}`, v: "" };
   });
   sheet["!ref"] = `A1:N${analysis.outputRows.length + 1}`;
   sheet["!cols"] = [{wch:10},{wch:26},{wch:32},{wch:26},{wch:32},{wch:18},{wch:28},{wch:10},{wch:12},{wch:12},{wch:12},{wch:12},{wch:12},{wch:55}];
@@ -384,6 +386,7 @@ async function sha256Hex(data) {
 }
 
 function safeFilePart(value) { return normalizeText(value).normalize("NFD").replace(/[\u0300-\u036f]/gu, "").replace(/[^a-z0-9_-]+/giu,"-").replace(/^-+|-+$/gu,"").slice(0,60) || "proiect-360"; }
+
 
 const text={ro:{skip:"Sari la spațiul de lucru",eyebrow:"Instrument intern · 360",title:"Din liste primite, într-un import curat.",lead:"Adună fișierele participanților, rezolvă excepțiile și descarcă un singur workbook verificat structural pentru aplicația 360 actuală.",localTitle:"Procesare exclusiv locală",localText:"Fișierele și datele personale nu părăsesc acest browser.",step1:"Încarcă listele",step2:"Corectează și confirmă",step3:"Descarcă importul",workbench:"Spațiu de lucru consultant",setup:"Pregătește proiectul",project:"Numele proiectului / campaniei",files:"Fișiere respondenți",filesHelp:"Selectează unul sau mai multe fișiere noi ori legacy (.xlsx)",allocation:"Export alocări existent",allocationHelp:"Opțional, doar pentru un proiect deja live",privacyLine:"Niciun upload online, fără analytics, fără salvare în browser. Resetarea șterge sesiunea din memorie; fișierele deja descărcate rămân pe dispozitiv.",reviewTitle:"Revizuire și corecturi",reviewLead:"Erorile sunt izolate pe participant și sursă. Fișierul final devine disponibil numai după rezolvarea tuturor blocajelor.",waiting:"În așteptare",ready:"Gata pentru export",blocked:"Necesită corecturi",reset:"Șterge sesiunea",download:"Descarcă importul A:N",audit:"Descarcă dovada de audit",auditPrivacy:"Dovada de audit conține informații confidențiale despre client. Tu controlezi unde este păstrată și când este ștearsă.",boundary:"Rezultatul este verificat structural. Compatibilitatea de producție se confirmă numai printr-un import controlat în aplicația actuală.",footer:"Instrument intern pentru pregătirea importului 360.",participants:"Participanți",allocations:"Rânduri valide",reused:"Identificatori reutilizați",newIds:"Identificatori noi",roles:"Roluri",languages:"Limbi",rowsLabel:"rânduri",rowLabel:"Rând",legacyNotice:"Fișierele legacy nu conțin limba chestionarului. RO este precompletat; verifică fiecare rând înainte de export.",englishNotice:"Chestionare EN — valide, verifică fiecare alocare înainte de lansare.",name:"Nume participant",email:"Email participant",language:"Limbă",source:"Sursă",confirmName:"Confirmă numele ales",conflict:"Același email apare cu nume diferite",recommended:"Recomandat din export",correctAllocation:"Corectează sau înlocuiește exportul de alocări înainte de a continua.",clearConfirm:"Ștergi toate fișierele și corecturile din sesiune?",unsupported:"Fișierul nu are un format recunoscut",allocationError:"Exportul de alocări nu poate fi citit",noData:"Încarcă fișiere pentru a începe revizuirea.",sourcesTitle:"Surse și trasabilitate",sourcesLead:"Fiecare încercare rămâne vizibilă, cu amprenta SHA-256 și rezultatul prelucrării.",removeSource:"Elimină",replaceSource:"Înlocuiește",sourceAccepted:"acceptată",sourceBlocked:"blocată",sourceRejected:"respinsă",sourcePending:"se verifică",adapter:"format",parsed:"citite",exportable:"exportabile",ignored:"ignorate intenționat",normalizations:"normalizări",recoveryTitle:"Cum revii după o eroare",recoveryText:"Corectează fișierul numit, apoi folosește Înlocuiește pe sursa lui sau elimină-l și încarcă-l din nou. Revizuiește și regenerează ieșirile. Dacă închizi sau resetezi pagina, memoria se golește și sursele trebuie reîncărcate.",sourceRejectedIssue:"Sursa nu a putut fi citită. Corecteaz-o, apoi elimin-o sau înlocuiește-o; nu folosim în tăcere o stare mai veche."},en:{skip:"Skip to workspace",eyebrow:"Internal tool · 360",title:"From received lists to a clean import.",lead:"Combine participant files, resolve exceptions and download one structurally validated workbook for the current 360 application.",localTitle:"Local processing only",localText:"Files and personal data never leave this browser.",step1:"Load lists",step2:"Correct and confirm",step3:"Download import",workbench:"Consultant workspace",setup:"Prepare the project",project:"Project / campaign name",files:"Respondent files",filesHelp:"Select one or more new or legacy files (.xlsx)",allocation:"Existing allocation export",allocationHelp:"Optional, only for an already live project",privacyLine:"No online upload, analytics or browser storage. Reset clears in-memory data; already downloaded files remain on the device.",reviewTitle:"Review and corrections",reviewLead:"Errors are isolated by participant and source. The final file is available only after every blocker is resolved.",waiting:"Waiting",ready:"Ready to export",blocked:"Corrections needed",reset:"Clear session",download:"Download A:N import",audit:"Download audit receipt",auditPrivacy:"The audit receipt contains client-confidential information. You control where it is stored and when it is deleted.",boundary:"The result is structurally validated. Production compatibility requires a controlled import into the current application.",footer:"Internal tool for preparing the 360 import.",participants:"Participants",allocations:"Valid rows",reused:"Reused identifiers",newIds:"New identifiers",roles:"Roles",languages:"Languages",rowsLabel:"rows",rowLabel:"Row",legacyNotice:"Legacy files contain no questionnaire language. RO is prefilled; check every row before export.",englishNotice:"EN questionnaires — valid; review every allocation before launch.",name:"Participant name",email:"Participant email",language:"Language",source:"Source",confirmName:"Confirm selected name",conflict:"The same email appears with different names",recommended:"Recommended from allocation export",correctAllocation:"Correct or replace the allocation export before continuing.",clearConfirm:"Clear every file and correction in this session?",unsupported:"The workbook format is not recognised",allocationError:"The allocation export cannot be read",noData:"Load files to begin review.",sourcesTitle:"Sources and traceability",sourcesLead:"Every attempt stays visible with its SHA-256 fingerprint and processing outcome.",removeSource:"Remove",replaceSource:"Replace",sourceAccepted:"accepted",sourceBlocked:"blocked",sourceRejected:"rejected",sourcePending:"checking",adapter:"format",parsed:"parsed",exportable:"exportable",ignored:"intentionally ignored",normalizations:"normalizations",recoveryTitle:"How to recover from an error",recoveryText:"Correct the named file, then use Replace on that source, or remove and load it again. Review and regenerate the outputs. Closing or resetting clears memory, so sources must be reloaded.",sourceRejectedIssue:"The source could not be read. Correct it, then remove or replace it; an older state is never reused silently."}};
 Object.assign(text.ro, {

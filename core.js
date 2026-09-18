@@ -1,24 +1,26 @@
-export const PRODUCTION_HEADERS = ["Marca","PersoanaEvaluata","PersoanaEvaluataEmail","Evaluator","EvaluatorEmail","EvaluatorRol","NumeCampanie","Limba","Criteriu1","Criteriu2","Criteriu3","Criteriu4","Criteriu5","NumeInregistrare"];
-export const COLLECTOR_HEADERS = ["ParticipantName","ParticipantEmail","EvaluatorName","EvaluatorEmail","Relationship","Language","IsSelf"];
+const PRODUCTION_HEADERS = ["Marca","PersoanaEvaluata","PersoanaEvaluataEmail","Evaluator","EvaluatorEmail","EvaluatorRol","NumeCampanie","Limba","Criteriu1","Criteriu2","Criteriu3","Criteriu4","Criteriu5","NumeInregistrare"];
+const COLLECTOR_HEADERS = ["ParticipantName","ParticipantEmail","EvaluatorName","EvaluatorEmail","Relationship","Language","IsSelf"];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
 const LANGUAGE_RE = /^[A-Z]{2}$/u;
 const ROLE_ORDER = { Manager: 0, Peer: 1, Subordonat: 2, PartenerExtern: 3 };
 
-export function normalizeText(value) {
+function normalizeText(value) {
   return String(value ?? "").replace(/[\u00a0\u2007\u202f]/gu, " ").replace(/\s+/gu, " ").trim();
 }
-export function normalizeEmail(value) { return normalizeText(value).toLocaleLowerCase("en-US"); }
-export function normalizeLanguage(value) { return normalizeText(value).toUpperCase(); }
-export function isValidEmail(value) { return EMAIL_RE.test(normalizeEmail(value)); }
+function normalizeEmail(value) { return normalizeText(value).toLocaleLowerCase("en-US"); }
+function normalizeLanguage(value) { return normalizeText(value).toUpperCase(); }
+function isValidEmail(value) { return EMAIL_RE.test(normalizeEmail(value)); }
 function fold(value) { return normalizeText(value).normalize("NFD").replace(/[\u0300-\u036f]/gu, "").toLocaleLowerCase("en-US"); }
+function roleKey(value) { return fold(value).replace(/[\s_-]+/gu, ""); }
+function isSelfRole(value) { return roleKey(value) === "autoevaluare"; }
 
-export function mapRole(value) {
-  const key = fold(value);
+function mapRole(value) {
+  const key = roleKey(value);
   if (key === "autoevaluare") return "Manager";
-  if (key === "manager" || key === "functional manager") return "Manager";
+  if (key === "manager" || key === "functionalmanager") return "Manager";
   if (key === "peer" || key === "coleg") return "Peer";
   if (key === "subordonat") return "Subordonat";
-  if (key === "stakeholder" || key === "partener" || key === "partenerextern" || key === "partener extern") return "PartenerExtern";
+  if (key === "stakeholder" || key === "partener" || key === "partenerextern") return "PartenerExtern";
   return null;
 }
 
@@ -51,7 +53,7 @@ function parseCollectorRows(rows, headerIndex, sourceName, normalizations) {
       participantName: normalizeText(row[0]), participantEmail,
       evaluatorName: normalizeText(row[2]), evaluatorEmail,
       sourceRole, role: mapRole(sourceRole), language: normalizeLanguage(row[5]),
-      isSelf: fold(row[6]) === "da" || fold(row[6]) === "yes" || sourceRole === "Autoevaluare" || (participantEmail && participantEmail === evaluatorEmail),
+      isSelf: fold(row[6]) === "da" || fold(row[6]) === "yes" || isSelfRole(sourceRole) || (participantEmail && participantEmail === evaluatorEmail),
       source: sourceName, rowNumber, legacy: false,
     };
   });
@@ -75,15 +77,15 @@ function parseLegacyRows(rows, headerIndex, sourceName, normalizations) {
     const sourceRole = normalizeText(row[roleIndex]);
     if (!sourceRole && !normalizeText(row[emailIndex]) && !normalizeText(row[lastNameIndex]) && !normalizeText(row[firstNameIndex])) return null;
     const rowNumber = headerIndex + index + 2;
-    const evaluatorName = normalizeText([row[firstNameIndex], row[lastNameIndex]].filter(Boolean).join(" "));
+    const evaluatorName = normalizeText([row[lastNameIndex], row[firstNameIndex]].filter(Boolean).join(" "));
     const evaluatorEmail = normalizeEmail(row[emailIndex]);
-    recordNormalization(normalizations, sourceName, rowNumber, "EvaluatorName", [row[firstNameIndex], row[lastNameIndex]].filter(Boolean).join(" "), evaluatorName);
+    recordNormalization(normalizations, sourceName, rowNumber, "EvaluatorName", [row[lastNameIndex], row[firstNameIndex]].filter(Boolean).join(" "), evaluatorName);
     recordNormalization(normalizations, sourceName, rowNumber, "EvaluatorEmail", row[emailIndex], evaluatorEmail);
     recordNormalization(normalizations, sourceName, rowNumber, "Relationship", row[roleIndex], sourceRole);
     recordNormalization(normalizations, sourceName, rowNumber, "ProductionRole", sourceRole, mapRole(sourceRole) || sourceRole);
     return {
       evaluatorName, evaluatorEmail, sourceRole, role: mapRole(sourceRole), language: "RO",
-      isSelf: fold(sourceRole) === "autoevaluare", source: sourceName, rowNumber, legacy: true,
+      isSelf: isSelfRole(sourceRole), source: sourceName, rowNumber, legacy: true,
     };
   }).filter(Boolean);
   const self = parsedRows.find((row) => row.isSelf);
@@ -93,7 +95,7 @@ function parseLegacyRows(rows, headerIndex, sourceName, normalizations) {
   return { participants: [{ id: `${sourceName}:legacy`, source: sourceName, adapter: "legacy", participantName, participantEmail, rows: parsedRows, legacyLanguageAssumed: true }], ignoredRows: sourceRows.length - parsedRows.length };
 }
 
-export function parseParticipantWorkbook(XLSX, data, sourceName) {
+function parseParticipantWorkbook(XLSX, data, sourceName) {
   const workbook = XLSX.read(data, { type: data instanceof ArrayBuffer ? "array" : "buffer", cellFormula: false, cellHTML: false });
   for (const sheetName of workbook.SheetNames) {
     const rows = rowsFromSheet(XLSX, workbook.Sheets[sheetName]);
@@ -119,7 +121,7 @@ export function parseParticipantWorkbook(XLSX, data, sourceName) {
   throw new Error("unsupported-participant-workbook");
 }
 
-export function parseAllocationWorkbook(XLSX, data, sourceName = "allocation.xlsx") {
+function parseAllocationWorkbook(XLSX, data, sourceName = "allocation.xlsx") {
   const workbook = XLSX.read(data, { type: data instanceof ArrayBuffer ? "array" : "buffer", cellFormula: false, cellHTML: false });
   const sheet = workbook.Sheets.Accounts;
   if (!sheet) throw new Error("missing-accounts-sheet");
@@ -140,7 +142,7 @@ export function parseAllocationWorkbook(XLSX, data, sourceName = "allocation.xls
   return { ...analyzeAllocation(records), ignoredRows: sourceRows.length - contentRows.length, normalizations };
 }
 
-export function analyzeAllocation(records = []) {
+function analyzeAllocation(records = []) {
   const errors = [];
   const byEmail = new Map();
   const byId = new Map();
@@ -212,7 +214,7 @@ function addNameVariant(store, email, name, source, rowNumber, origin) {
   if (!provenance.some((entry) => entry.source === item.source && entry.rowNumber === item.rowNumber && entry.origin === item.origin)) provenance.push(item);
 }
 
-export function analyzeProject({ participants = [], allocation = analyzeAllocation([]), nameChoices = {}, projectName = "", sourceBlockers = [] }) {
+function analyzeProject({ participants = [], allocation = analyzeAllocation([]), nameChoices = {}, projectName = "", sourceBlockers = [] }) {
   const blockers = [...sourceBlockers, ...(allocation?.errors || [])];
   const warnings = [];
   const normalizedParticipants = mergeParticipants(participants);
@@ -307,7 +309,7 @@ export function analyzeProject({ participants = [], allocation = analyzeAllocati
 }
 
 function textCell(value) { return { t: "s", v: String(value ?? "") }; }
-export function createProductionWorkbook(XLSX, analysis, projectName) {
+function createProductionWorkbook(XLSX, analysis, projectName) {
   if (!analysis.ready) throw new Error("Project has blocking errors");
   const sheet = {};
   PRODUCTION_HEADERS.forEach((header, column) => { sheet[XLSX.utils.encode_cell({ r: 0, c: column })] = textCell(header); });
@@ -315,7 +317,7 @@ export function createProductionWorkbook(XLSX, analysis, projectName) {
     const excelRow = index + 2;
     const values = [row.identifier,row.participantName,row.participantEmail,row.evaluatorName,row.evaluatorEmail,row.role,normalizeText(projectName),row.language,"","","","",""];
     values.forEach((value, column) => { sheet[XLSX.utils.encode_cell({ r: index + 1, c: column })] = textCell(value); });
-    sheet[XLSX.utils.encode_cell({ r: index + 1, c: 13 })] = { t: "str", f: `CONCAT(G${excelRow}," - ",B${excelRow}," - ",D${excelRow})`, v: "" };
+    sheet[XLSX.utils.encode_cell({ r: index + 1, c: 13 })] = { t: "str", f: `G${excelRow}&" - "&B${excelRow}&" - "&D${excelRow}`, v: "" };
   });
   sheet["!ref"] = `A1:N${analysis.outputRows.length + 1}`;
   sheet["!cols"] = [{wch:10},{wch:26},{wch:32},{wch:26},{wch:32},{wch:18},{wch:28},{wch:10},{wch:12},{wch:12},{wch:12},{wch:12},{wch:12},{wch:55}];
@@ -338,7 +340,7 @@ function literalSheet(XLSX, rows, widths = []) {
   return sheet;
 }
 
-export function createAuditWorkbook(XLSX, { projectName = "", analysis, sources = [], generatedAt = "", normalizations = [] }) {
+function createAuditWorkbook(XLSX, { projectName = "", analysis, sources = [], generatedAt = "", normalizations = [] }) {
   const runRows = [
     ["Field", "Value"], ["Project", normalizeText(projectName) || "—"], ["Generated locally at", generatedAt || "—"],
     ["State", analysis?.ready ? "ready" : "blocked"], ["Participants", String(analysis?.summary?.participants ?? 0)],
@@ -377,10 +379,10 @@ export function createAuditWorkbook(XLSX, { projectName = "", analysis, sources 
   return workbook;
 }
 
-export async function sha256Hex(data) {
+async function sha256Hex(data) {
   const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
   const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
 }
 
-export function safeFilePart(value) { return normalizeText(value).normalize("NFD").replace(/[\u0300-\u036f]/gu, "").replace(/[^a-z0-9_-]+/giu,"-").replace(/^-+|-+$/gu,"").slice(0,60) || "proiect-360"; }
+function safeFilePart(value) { return normalizeText(value).normalize("NFD").replace(/[\u0300-\u036f]/gu, "").replace(/[^a-z0-9_-]+/giu,"-").replace(/^-+|-+$/gu,"").slice(0,60) || "proiect-360"; }
