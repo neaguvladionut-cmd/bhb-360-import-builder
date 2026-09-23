@@ -1,0 +1,56 @@
+name: Browser check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install browser runner
+        run: npm install --no-save playwright@1.55.0
+      - name: Render root page
+        run: |
+          node <<'NODE'
+          const { chromium } = require('playwright');
+          const http = require('http');
+          const fs = require('fs');
+          const path = require('path');
+          const root = process.cwd();
+          const server = http.createServer((req, res) => {
+            const pathname = req.url === '/' ? '/index.html' : req.url;
+            const file = path.join(root, pathname);
+            if (!file.startsWith(root) || !fs.existsSync(file)) {
+              res.writeHead(404); res.end('not found'); return;
+            }
+            res.writeHead(200, { 'content-type': pathname.endsWith('.html') ? 'text/html' : 'text/plain' });
+            res.end(fs.readFileSync(file));
+          });
+          (async () => {
+            await new Promise(resolve => server.listen(4173, '127.0.0.1', resolve));
+            const browser = await chromium.launch({ headless: true });
+            const page = await browser.newPage();
+            const errors = [];
+            page.on('pageerror', error => errors.push(error.message));
+            page.on('response', response => { if (response.status() >= 400) errors.push(`${response.status()} ${response.url()}`); });
+            await page.goto('http://127.0.0.1:4173/', { waitUntil: 'networkidle' });
+            await page.screenshot({ path: 'browser-check.png', fullPage: true });
+            if (errors.length) throw new Error(errors.join('\n'));
+            await browser.close();
+            server.close();
+          })().catch(error => { console.error(error); process.exitCode = 1; server.close(); });
+          NODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-check
+          path: browser-check.png
