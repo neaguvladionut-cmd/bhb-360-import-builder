@@ -50,7 +50,7 @@ These are visible changes for Vlad's click-through:
 2. **Legacy name order.** Increment 13 makes legacy evaluator names `Nume Prenume`. Any consultant who loaded legacy files on live before 2026-09-18 saw `Prenume Nume`. That is live behavior today, not a change made here.
 
 3. **Internal docs are private (Vlad, 2026-09-24).** `docs/platform-bridge-proposal.md` is removed here and the collector's `docs/review-note.md` is removed in its own PR. Both are kept in `bhb-platform` `10-project/standalone-history/`. The two README links now read "internal note, kept in the private workspace".
-4. **Generic project placeholder (Vlad, 2026-09-24).** `ex. TLJ 2026` was an internal project name. It becomes `ex. Proiect 360 2026` (RO) and `e.g. 360 Project 2026` (EN). The placeholder had no EN form before, so it is now an i18n key (`projectPlaceholder`, applied in `setLang` through `data-i18n-placeholder`). Check: `increment13.test.mjs` "project placeholder is generic in RO and EN".
+4. **Generic project placeholder (Vlad, 2026-09-24).** The former placeholder was an internal project name. It becomes `ex. Proiect 360 2026` (RO) and `e.g. 360 Project 2026` (EN). The placeholder had no EN form before, so it is now an i18n key (`projectPlaceholder`, applied in `setLang` through `data-i18n-placeholder`). Check: `increment13.test.mjs` "project placeholder is generic in RO and EN".
 
 ## Served root, before and after (SHA-256)
 
@@ -66,7 +66,7 @@ These are visible changes for Vlad's click-through:
 
 | Path | Content | Personal / client data | Disposition |
 |---|---|---|---|
-| `src/` | Canonical source of the served app (ES-module form), same assets | None. The internal placeholder `ex. TLJ 2026` (live since `7599b4d`) is replaced; see ruling 3 | Publish |
+| `src/` | Canonical source of the served app (ES-module form), same assets | None. The former placeholder (an internal project name, live since `7599b4d`) is replaced; see ruling 4 | Publish |
 | `deploy/` | Build output, byte-identical to the served root | As above | Publish |
 | `tests/*.test.mjs`, `tests/browser.browser.mjs`, `tests/increment13.test.mjs` | Synthetic workbooks | Only `D210 …` names and `@example.invalid` addresses | Publish |
 | `tests/fixtures/d210-project.json` | Marked "D210 SYNTHETIC — not real client data" | Synthetic only | Publish |

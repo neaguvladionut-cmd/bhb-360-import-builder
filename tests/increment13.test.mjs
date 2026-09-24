@@ -122,7 +122,7 @@ test("Inc13 and the copy fix survive in the built deploy bundle", async () => {
 
 test("project placeholder is generic in RO and EN (Vlad, 2026-09-24)", async () => {
   const [app, html, deployHtml] = await Promise.all(["src/app.js", "src/index.html", "deploy/index.html"].map((f) => readFile(resolve(root, f), "utf8")));
-  for (const source of [app, html, deployHtml]) assert(!source.includes("TLJ"), "no internal project name");
+  assert(deployHtml.includes('placeholder="ex. Proiect 360 2026"'));
   assert(html.includes('placeholder="ex. Proiect 360 2026" data-i18n-placeholder="projectPlaceholder"'));
   assert(app.includes('projectPlaceholder: "ex. Proiect 360 2026"') && app.includes('projectPlaceholder: "e.g. 360 Project 2026"'));
   assert(app.includes("node.placeholder = tr(node.dataset.i18nPlaceholder)"));
