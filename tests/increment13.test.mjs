@@ -119,3 +119,11 @@ test("Inc13 and the copy fix survive in the built deploy bundle", async () => {
   for (const phrase of ["Nicio încărcare online, fără analize de utilizare", "Aceeași adresă de email apare cu nume diferite", "Participant's email address", "Correct the file, then remove or replace the source"]) assert(app.includes(phrase), phrase);
   for (const phrase of ["Erorile sunt izolate pentru fiecare participant și sursă.", "Corectează fișierul indicat, apoi folosește opțiunea Înlocuiește", "Nicio încărcare online"]) assert(html.includes(phrase), phrase);
 });
+
+test("project placeholder is generic in RO and EN (Vlad, 2026-09-24)", async () => {
+  const [app, html, deployHtml] = await Promise.all(["src/app.js", "src/index.html", "deploy/index.html"].map((f) => readFile(resolve(root, f), "utf8")));
+  for (const source of [app, html, deployHtml]) assert(!source.includes("TLJ"), "no internal project name");
+  assert(html.includes('placeholder="ex. Proiect 360 2026" data-i18n-placeholder="projectPlaceholder"'));
+  assert(app.includes('projectPlaceholder: "ex. Proiect 360 2026"') && app.includes('projectPlaceholder: "e.g. 360 Project 2026"'));
+  assert(app.includes("node.placeholder = tr(node.dataset.i18nPlaceholder)"));
+});

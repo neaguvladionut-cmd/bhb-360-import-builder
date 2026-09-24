@@ -73,11 +73,11 @@ For a local preview, extract the pack and open `deploy/index.html` directly. The
 
 - **From the current production app:** this tool is a pre-import safety layer. It normalizes and validates data, reuses evaluator identifiers and emits the old application's exact workbook contract, including its self-as-first-Manager quirk. It does not send notifications or modify the live project itself.
 - **From the participant collector:** this is an internal project-wide reconciliation surface. It exposes production roles, identifier conflicts, allocation history and export readiness that would confuse or burden participants.
-- **From the future platform:** native project enrollment should remove this handoff entirely. The importer remains only as a fallback/migration path; see [docs/platform-bridge-proposal.md](docs/platform-bridge-proposal.md).
+- **From the future platform:** native project enrollment should remove this handoff entirely. The importer remains only as a fallback/migration path (internal note, kept in the private workspace).
 
 ## Acceptance boundary
 
-The implementation contract is [docs/production-contract.md](docs/production-contract.md), and the authoritative numbered acceptance list is in the collector's tool-local [review note](https://github.com/neaguvladionut-cmd/bhb-360-respondent-collector/blob/main/docs/review-note.md). Workbook structure can be accepted through tests, XML inspection and Excel/LibreOffice reopening. The phrase **production-compatible** is reserved until Vlad completes a controlled import into the old production 360 app and verifies row acceptance, self-sheet assignment, notification creation and identifier reuse; before that, the pack is **structurally validated**.
+The implementation contract is [docs/production-contract.md](docs/production-contract.md), and the authoritative numbered acceptance list is in the collector's review note (internal note, kept in the private workspace). Workbook structure can be accepted through tests, XML inspection and Excel/LibreOffice reopening. The phrase **production-compatible** is reserved until Vlad completes a controlled import into the old production 360 app and verifies row acceptance, self-sheet assignment, notification creation and identifier reuse; before that, the pack is **structurally validated**.
 
 ## Development verification
 
