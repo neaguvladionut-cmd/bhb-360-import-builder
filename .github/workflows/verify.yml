@@ -1,0 +1,27 @@
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request: {}
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # No dependencies to install. test:browser is left out: it needs Chromium, which this job does not install.
+      - name: Build
+        run: npm run build
+      - name: Test
+        run: npm test
+      - name: Fresh build equals committed deploy/
+        run: git diff --exit-code -- deploy && test -z "$(git status --porcelain -- deploy)"
+      - name: Served root equals deploy/
+        run: npm run check:root

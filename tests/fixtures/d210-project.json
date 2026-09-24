@@ -1,0 +1,29 @@
+{
+  "fixture": "D210 SYNTHETIC — not real client data",
+  "projectName": "D210 Project",
+  "participants": [
+    {
+      "id": "d210-a",
+      "source": "d210-a.xlsx",
+      "adapter": "collector",
+      "participantName": "D210 Ada Exemplu",
+      "participantEmail": "ada@example.invalid",
+      "rows": [
+        { "evaluatorName": "D210 Ada Exemplu", "evaluatorEmail": "ada@example.invalid", "sourceRole": "Autoevaluare", "language": "RO", "isSelf": true, "source": "d210-a.xlsx", "rowNumber": 2 },
+        { "evaluatorName": "D210 Mihai Manager", "evaluatorEmail": "mihai@example.invalid", "sourceRole": "Manager", "language": "RO", "isSelf": false, "source": "d210-a.xlsx", "rowNumber": 3 },
+        { "evaluatorName": "D210 Erin Stakeholder", "evaluatorEmail": "erin@example.invalid", "sourceRole": "Stakeholder", "language": "EN", "isSelf": false, "source": "d210-a.xlsx", "rowNumber": 4 }
+      ]
+    },
+    {
+      "id": "d210-b",
+      "source": "d210-b.xlsx",
+      "adapter": "collector",
+      "participantName": "D210 Bogdan Exemplu",
+      "participantEmail": "bogdan@example.invalid",
+      "rows": [
+        { "evaluatorName": "D210 Bogdan Exemplu", "evaluatorEmail": "bogdan@example.invalid", "sourceRole": "Autoevaluare", "language": "RO", "isSelf": true, "source": "d210-b.xlsx", "rowNumber": 2 },
+        { "evaluatorName": "D210 Mihai Manager", "evaluatorEmail": "mihai@example.invalid", "sourceRole": "Functional Manager", "language": "RO", "isSelf": false, "source": "d210-b.xlsx", "rowNumber": 3 }
+      ]
+    }
+  ]
+}
