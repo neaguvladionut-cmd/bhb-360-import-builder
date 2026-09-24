@@ -1,0 +1,12 @@
+{
+  "name": "bhb-360-import-builder",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "test:browser": "node tools/test-browser.mjs",
+    "verify": "npm run build && npm test && npm run test:browser",
+    "check:root": "node tools/check-root.mjs"
+  }
+}
