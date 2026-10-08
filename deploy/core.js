@@ -421,6 +421,7 @@ function analyzeLiveProject({ participants = [], allocation = analyzeAllocation(
   const blockers = [...sourceBlockers, ...(allocation?.errors || [])];
   const warnings = [];
   const skippedRows = [];
+  const heldBackRows = [];
   const normalizedState = stateRecords.map((record) => ({ ...record, participantEmail: normalizeEmail(record.participantEmail), email: normalizeEmail(record.email), participantName: normalizeText(record.participantName), name: normalizeText(record.name), campaign: normalizeText(record.campaign), language: normalizeLanguage(record.language), criteria: Array.from({ length: CRITERIA_COUNT }, (_, i) => normalizeText(record.criteria?.[i])), role: mapRole(record.sourceRole) || record.role }));
   const campaigns = [...new Set(normalizedState.map((record) => record.campaign).filter(Boolean))];
   if (campaigns.length > 1 || (campaigns.length === 1 && normalizeText(projectName) && normalizeText(projectName) !== campaigns[0])) blockers.push({ code: "campaign-mismatch", source: "state", campaigns, projectName: normalizeText(projectName), correctiveAction: "Folosește același nume de campanie în toate fișierele." });
@@ -451,6 +452,12 @@ function analyzeLiveProject({ participants = [], allocation = analyzeAllocation(
     }
     for (const row of participant.rows) {
       if (row.isSelf) { skippedRows.push({ ...row, reason: "already-in-project" }); continue; }
+      const rowProblems = [];
+      if (!row.evaluatorName) rowProblems.push(issue("evaluator-name-missing", participant, row));
+      if (!isValidEmail(row.evaluatorEmail)) rowProblems.push(issue("evaluator-email-invalid", participant, row));
+      if (!row.role) rowProblems.push(issue("unknown-role", participant, row, { role: row.sourceRole }));
+      if (!LANGUAGE_RE.test(row.language)) rowProblems.push(issue("language-invalid", participant, row, { language: row.language }));
+      if (rowProblems.length) { blockers.push(...rowProblems); continue; }
       if (!criteriaAgreeOrInherit(row.criteria, settledCriteria)) { blockers.push(issue("criteria-conflict", participant, row, { correctiveAction: "Păstrează criteriile deja stabilite în proiect." })); continue; }
       const found = statePairs.get(pairKey(participant.participantEmail, row.evaluatorEmail));
       if (found) {
@@ -459,7 +466,14 @@ function analyzeLiveProject({ participants = [], allocation = analyzeAllocation(
         if (!unchanged) warnings.push(issue("change-in-app", participant, row, { previous: found }));
         continue;
       }
-      if (BLOCK_NEW_MANAGER_FOR_EXISTING_PARTICIPANT && row.role === "Manager") { blockers.push(issue("new-manager-existing-participant", participant, row, { correctiveAction: "Așteaptă testul controlat în aplicația 360 înainte de a adăuga acest Manager." })); continue; }
+      if (BLOCK_NEW_MANAGER_FOR_EXISTING_PARTICIPANT && row.role === "Manager") {
+        heldBackRows.push(issue("new-manager-existing-participant", participant, row, {
+          evaluator: row.evaluatorName,
+          email: row.evaluatorEmail,
+          correctiveAction: "Adaugă acest Manager direct în aplicația 360 sau așteaptă versiunea testată.",
+        }));
+        continue;
+      }
       existingRows.push({ ...row, participantName: settledName, criteria: settledCriteria });
     }
   }
@@ -476,7 +490,7 @@ function analyzeLiveProject({ participants = [], allocation = analyzeAllocation(
   const byRole = {}; const byLanguage = {}; outputRows.forEach((row) => { byRole[row.role] = (byRole[row.role] || 0) + 1; byLanguage[row.language] = (byLanguage[row.language] || 0) + 1; });
   const existingRespondents = new Set(normalizedState.filter((record) => !record.participantEmail || record.email !== record.participantEmail).map((record) => pairKey(record.participantEmail, record.email)));
   const nothingNew = outputRows.length === 0;
-  return { ...baseline, blockers, warnings, skippedRows, outputRows, identifiers, identifierEvidence, nothingNew, summary: { ...baseline.summary, participants: newParticipants.length + existingByParticipant.size, rows: outputRows.length, byRole, byLanguage, reusedCount, newCount: allEmails.length - reusedCount, nextIdentifier, cohortRespondents: new Set([...existingRespondents, ...outputRows.filter((row) => !row.isSelf).map((row) => pairKey(row.participantEmail, row.evaluatorEmail))]).size }, ready: blockers.length === 0 && !nothingNew };
+  return { ...baseline, blockers, warnings, skippedRows, heldBackRows, outputRows, identifiers, identifierEvidence, nothingNew, summary: { ...baseline.summary, participants: newParticipants.length + existingByParticipant.size, rows: outputRows.length, skippedRows: skippedRows.length, heldBackRows: heldBackRows.length, byRole, byLanguage, reusedCount, newCount: allEmails.length - reusedCount, nextIdentifier, cohortRespondents: new Set([...existingRespondents, ...outputRows.filter((row) => !row.isSelf).map((row) => pairKey(row.participantEmail, row.evaluatorEmail))]).size }, ready: blockers.length === 0 && !nothingNew };
 }
 
 export function analyzeProject(options = {}) { return options.stateRecords?.length ? analyzeLiveProject(options) : analyzeNewProject(options); }

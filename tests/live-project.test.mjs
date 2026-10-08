@@ -6,12 +6,14 @@ const state = [{ identifier: "71", participantName: "D210 Ada", participantEmail
 function incoming(rows) { return { id: "d210-resend", source: "d210-resend.xlsx", participantName: "D210 Ada", participantEmail: " ADA@example.invalid ", rows }; }
 function row(name, email, role, isSelf = false, language = "RO", criteria = ["Leadership", "Integrity", "", "", ""]) { return { evaluatorName: name, evaluatorEmail: email, sourceRole: role, language, criteria, isSelf, source: "d210-resend.xlsx", rowNumber: 2 }; }
 
-test("live project normalizes a resent pair, skips its self row, and blocks a new Manager", () => {
+test("live project normalizes a resent pair, skips its self row, and holds back a new Manager without blocking export", () => {
   const analysis = analyzeProject({ participants: [incoming([row("D210 Ada", "ada@example.invalid", "Autoevaluare", true), row("D210 Existing Manager", " MANAGER@example.invalid", "Manager"), row("D210 New Manager", "new.manager@example.invalid", "Manager")])], stateRecords: state, allocation: analyzeAllocation(state), projectName: "D210 Live" });
   assert.equal(analysis.outputRows.length, 0);
   assert.equal(analysis.skippedRows.length, 2);
   assert.equal(analysis.skippedRows[1].reason, "already-in-project");
-  assert(analysis.blockers.some((item) => item.code === "new-manager-existing-participant"));
+  assert.equal(analysis.blockers.some((item) => item.code === "new-manager-existing-participant"), false);
+  assert.equal(analysis.heldBackRows.length, 1);
+  assert.equal(analysis.heldBackRows[0].evaluator, "D210 New Manager");
 });
 
 test("live project exports a different participant's respondent and blocks campaign and criteria changes", () => {
@@ -80,7 +82,7 @@ test("near neighbours: a participant-name conflict blocks until the settled stat
   assert.equal(chosen.outputRows[0].participantName, "D210 Ada");
 });
 
-test("near neighbours: allocation-only evidence needs a campaign, new participants stay unchanged, and F2 blocks only the new Manager", () => {
+test("F2 holds back only a new Manager for an existing participant: Peer exports, a new participant's Manager exports, and a real blocker still blocks", () => {
   const fresh = { id: "d210-fresh", source: "d210-fresh.xlsx", participantName: "D210 Fresh", participantEmail: "fresh@example.invalid", rows: [row("D210 Fresh", "fresh@example.invalid", "Autoevaluare", true), row("D210 Fresh Manager", "fresh.manager@example.invalid", "Manager")] };
   const allocationOnly = analyzeAllocation([{ identifier: "99", name: "D210 Fresh Manager", email: "fresh.manager@example.invalid", participantEmail: "fresh@example.invalid", sourceRole: "Manager", source: "d210-accounts.xlsx", rowNumber: 2 }]);
   const missingCampaign = analyzeProject({ participants: [fresh], allocation: allocationOnly, projectName: "" });
@@ -89,6 +91,14 @@ test("near neighbours: allocation-only evidence needs a campaign, new participan
   assert.equal(withCampaign.ready, true);
   assert.deepEqual(withCampaign.outputRows.map((item) => item.participantName), ["D210 Fresh", "D210 Fresh"]);
   const managerAndPeer = analyzeProject({ participants: [incoming([row("D210 Ada", "ada@example.invalid", "Autoevaluare", true), row("D210 New Manager", "new.manager@example.invalid", "Manager"), row("D210 New Peer", "new.peer@example.invalid", "Peer")])], stateRecords: state, allocation: analyzeAllocation(state), projectName: "D210 Live" });
-  assert(managerAndPeer.blockers.some((item) => item.code === "new-manager-existing-participant"));
+  assert.equal(managerAndPeer.ready, true);
+  assert.equal(managerAndPeer.blockers.some((item) => item.code === "new-manager-existing-participant"), false);
+  assert.equal(managerAndPeer.heldBackRows.length, 1);
   assert.deepEqual(managerAndPeer.outputRows.map((item) => item.sourceRole), ["Peer"]);
+  const newParticipantManager = analyzeProject({ participants: [fresh], stateRecords: state, allocation: analyzeAllocation(state), projectName: "D210 Live" });
+  assert.equal(newParticipantManager.ready, true);
+  assert(newParticipantManager.outputRows.some((item) => item.sourceRole === "Manager" && item.participantEmail === "fresh@example.invalid"));
+  const realBlocker = analyzeProject({ participants: [incoming([row("D210 Ada", "ada@example.invalid", "Autoevaluare", true), row("D210 New Peer", "not-an-email", "Peer")])], stateRecords: state, allocation: analyzeAllocation(state), projectName: "D210 Live" });
+  assert.equal(realBlocker.ready, false);
+  assert(realBlocker.blockers.some((item) => item.code === "evaluator-email-invalid"));
 });
