@@ -187,7 +187,7 @@ function parseExistingProjectWorkbook(XLSX, workbook, sourceName) {
     const contentRows = sourceRows.map((row, index) => ({ row, rowNumber: headerIndex + index + 2 })).filter(({ row }) => row.some((value) => normalizeText(value)));
     const normalizations = [];
     const records = contentRows.map(({ row, rowNumber }) => {
-      const record = { identifier: normalizeText(row[0]), name: normalizeText(row[3]), email: normalizeEmail(row[4]), source: sourceName, rowNumber };
+      const record = { identifier: normalizeText(row[0]), name: normalizeText(row[3]), email: normalizeEmail(row[4]), participantName: normalizeText(row[1]), participantEmail: normalizeEmail(row[2]), sourceRole: normalizeText(row[5]), role: mapRole(row[5]), campaign: normalizeText(row[6]), language: normalizeLanguage(row[7]), criteria: Array.from({ length: CRITERIA_COUNT }, (_, i) => normalizeText(row[8 + i])), source: sourceName, rowNumber, origin: "existing-production" };
       recordNormalization(normalizations, sourceName, rowNumber, "Identifier", row[0], record.identifier);
       recordNormalization(normalizations, sourceName, rowNumber, "Assessor Name", row[3], record.name);
       recordNormalization(normalizations, sourceName, rowNumber, "Assessor Email", row[4], record.email);
@@ -222,7 +222,7 @@ export function parseAllocationWorkbook(XLSX, data, sourceName = "allocation.xls
   const contentRows = sourceRows.map((row, index) => ({ row, rowNumber: headerIndex + index + 2 })).filter(({ row }) => row.some((value) => normalizeText(value)));
   const normalizations = [];
   const records = contentRows.map(({ row, rowNumber }) => {
-    const record = { identifier: normalizeText(row[0]), name: normalizeText(row[1]), email: normalizeEmail(row[2]), source: sourceName, rowNumber };
+    const record = { identifier: normalizeText(row[0]), name: normalizeText(row[1]), email: normalizeEmail(row[2]), participantEmail: normalizeEmail(row[4]), sourceRole: normalizeText(row[5]), role: mapRole(row[5]), source: sourceName, rowNumber, origin: "allocation-export" };
     recordNormalization(normalizations, sourceName, rowNumber, "Identifier", row[0], record.identifier);
     recordNormalization(normalizations, sourceName, rowNumber, "Assessor Name", row[1], record.name);
     recordNormalization(normalizations, sourceName, rowNumber, "Assessor Email", row[2], record.email);
@@ -305,7 +305,7 @@ function addNameVariant(store, email, name, source, rowNumber, origin) {
   if (!provenance.some((entry) => entry.source === item.source && entry.rowNumber === item.rowNumber && entry.origin === item.origin)) provenance.push(item);
 }
 
-export function analyzeProject({ participants = [], allocation = analyzeAllocation([]), nameChoices = {}, projectName = "", sourceBlockers = [] }) {
+function analyzeNewProject({ participants = [], allocation = analyzeAllocation([]), nameChoices = {}, projectName = "", sourceBlockers = [] }) {
   const blockers = [...sourceBlockers, ...(allocation?.errors || [])];
   const warnings = [];
   const normalizedParticipants = mergeParticipants(participants);
@@ -404,6 +404,76 @@ export function analyzeProject({ participants = [], allocation = analyzeAllocati
   outputRows.forEach((row) => { byRole[row.role] = (byRole[row.role] || 0) + 1; byLanguage[row.language] = (byLanguage[row.language] || 0) + 1; });
   return { blockers, warnings, conflicts, participantSummaries, outputRows, identifiers, identifierEvidence, canonicalNames, summary: { participants: normalizedParticipants.length, rows: outputRows.length, byRole, byLanguage, reusedCount, newCount: allEmails.length - reusedCount, nextIdentifier }, ready: blockers.length === 0 };
 }
+
+// Lift this single switch only after a controlled disposable-campaign test confirms
+// that the legacy 360 application accepts a Manager added to an existing participant.
+export const BLOCK_NEW_MANAGER_FOR_EXISTING_PARTICIPANT = true;
+
+function sameCriteria(left = [], right = []) { return Array.from({ length: CRITERIA_COUNT }, (_, i) => normalizeText(left[i]) === normalizeText(right[i])).every(Boolean); }
+function pairKey(participantEmail, evaluatorEmail) { return `${normalizeEmail(participantEmail)}|${normalizeEmail(evaluatorEmail)}`; }
+
+function stateIssue(code, record, extra = {}) {
+  return { code, participant: record.participantName || record.participantEmail || "—", source: record.source, rowNumber: record.rowNumber, correctiveAction: "Corectează rândul indicat sau elimină/înlocuiește fișierul.", ...extra };
+}
+
+function analyzeLiveProject({ participants = [], allocation = analyzeAllocation([]), stateRecords = [], nameChoices = {}, projectName = "", sourceBlockers = [] }) {
+  const blockers = [...sourceBlockers, ...(allocation?.errors || [])];
+  const warnings = [];
+  const skippedRows = [];
+  const normalizedState = stateRecords.map((record) => ({ ...record, participantEmail: normalizeEmail(record.participantEmail), email: normalizeEmail(record.email), participantName: normalizeText(record.participantName), name: normalizeText(record.name), campaign: normalizeText(record.campaign), language: normalizeLanguage(record.language), criteria: Array.from({ length: CRITERIA_COUNT }, (_, i) => normalizeText(record.criteria?.[i])), role: mapRole(record.sourceRole) || record.role }));
+  const campaigns = [...new Set(normalizedState.map((record) => record.campaign).filter(Boolean))];
+  if (campaigns.length > 1 || (campaigns.length === 1 && normalizeText(projectName) && normalizeText(projectName) !== campaigns[0])) blockers.push({ code: "campaign-mismatch", source: "state", campaigns, projectName: normalizeText(projectName), correctiveAction: "Folosește același nume de campanie în toate fișierele." });
+  for (const record of normalizedState) {
+    if (!record.identifier || !isValidEmail(record.email) || !isValidEmail(record.participantEmail) || !record.role || (record.origin === "existing-production" && (!record.campaign || !LANGUAGE_RE.test(record.language)))) blockers.push(stateIssue("state-row-invalid", record));
+  }
+  const existingByParticipant = new Map();
+  for (const record of normalizedState) if (isValidEmail(record.participantEmail)) {
+    if (!existingByParticipant.has(record.participantEmail)) existingByParticipant.set(record.participantEmail, []);
+    existingByParticipant.get(record.participantEmail).push(record);
+  }
+  const newParticipants = [];
+  const existingRows = [];
+  for (const participant of mergeParticipants(participants)) {
+    const state = existingByParticipant.get(participant.participantEmail);
+    if (!state) { newParticipants.push(participant); continue; }
+    const stateNames = [...new Set(state.map((record) => record.participantName).filter(Boolean))];
+    const stateCriteria = Array.from({ length: CRITERIA_COUNT }, (_, i) => [...new Set(state.map((record) => record.criteria[i]).filter(Boolean))]);
+    if (stateNames.length !== 1 || stateCriteria.some((values) => values.length > 1)) blockers.push(stateIssue("state-conflict", state[0]));
+    const settledName = stateNames[0] || participant.participantName;
+    if (normalizeText(participant.participantName) !== settledName) blockers.push(issue("participant-name-conflict", participant, null, { stateName: settledName, correctiveAction: "Folosește numele deja stabilit în proiect." }));
+    const settledCriteria = stateCriteria.map((values) => values[0] || "");
+    const statePairs = new Map(state.map((record) => [pairKey(record.participantEmail, record.email), record]));
+    for (const row of participant.rows) {
+      if (row.isSelf) { skippedRows.push({ ...row, reason: "already-in-project" }); continue; }
+      if (!sameCriteria(row.criteria, settledCriteria)) { blockers.push(issue("criteria-conflict", participant, row, { correctiveAction: "Păstrează criteriile deja stabilite în proiect." })); continue; }
+      const found = statePairs.get(pairKey(participant.participantEmail, row.evaluatorEmail));
+      if (found) {
+        const unchanged = found.role === row.role && found.language === row.language && sameCriteria(found.criteria, row.criteria);
+        skippedRows.push({ ...row, reason: unchanged ? "already-in-project" : "change-in-app", previous: found });
+        if (!unchanged) warnings.push(issue("change-in-app", participant, row, { previous: found }));
+        continue;
+      }
+      if (BLOCK_NEW_MANAGER_FOR_EXISTING_PARTICIPANT && row.role === "Manager") { blockers.push(issue("new-manager-existing-participant", participant, row, { correctiveAction: "Așteaptă testul controlat în aplicația 360 înainte de a adăuga acest Manager." })); continue; }
+      existingRows.push({ ...row, participantName: settledName, criteria: settledCriteria });
+    }
+  }
+  const baseline = analyzeNewProject({ participants: newParticipants, allocation, nameChoices, projectName, sourceBlockers: [] });
+  blockers.push(...baseline.blockers.filter((item) => item.code !== "files-required"));
+  warnings.push(...baseline.warnings);
+  const outputRows = [...baseline.outputRows, ...existingRows];
+  const allEmails = [...new Set(outputRows.map((row) => row.evaluatorEmail).filter(isValidEmail))].sort();
+  const identifiers = {}; const identifierEvidence = {}; let nextIdentifier = allocation.maxId + 1; let reusedCount = 0;
+  for (const email of allEmails) { const known = allocation.byEmail?.get(email); if (known?.identifiers.size === 1) { identifiers[email] = [...known.identifiers][0]; identifierEvidence[email] = { identifier: identifiers[email], disposition: "reused", records: known.records.map(({ source, rowNumber }) => ({ source, rowNumber })) }; reusedCount += 1; } }
+  for (const email of allEmails) if (!identifiers[email]) { identifiers[email] = String(nextIdentifier++); identifierEvidence[email] = { identifier: identifiers[email], disposition: "new", records: [] }; }
+  outputRows.forEach((row) => { row.identifier = identifiers[row.evaluatorEmail]; });
+  outputRows.sort((a, b) => a.participantEmail.localeCompare(b.participantEmail) || Number(b.isSelf) - Number(a.isSelf) || (ROLE_ORDER[a.role] ?? 99) - (ROLE_ORDER[b.role] ?? 99) || a.evaluatorEmail.localeCompare(b.evaluatorEmail));
+  const byRole = {}; const byLanguage = {}; outputRows.forEach((row) => { byRole[row.role] = (byRole[row.role] || 0) + 1; byLanguage[row.language] = (byLanguage[row.language] || 0) + 1; });
+  const existingRespondents = new Set(normalizedState.filter((record) => !record.participantEmail || record.email !== record.participantEmail).map((record) => pairKey(record.participantEmail, record.email)));
+  const nothingNew = blockers.length === 0 && outputRows.length === 0;
+  return { ...baseline, blockers, warnings, skippedRows, outputRows, identifiers, identifierEvidence, nothingNew, summary: { ...baseline.summary, participants: newParticipants.length + existingByParticipant.size, rows: outputRows.length, byRole, byLanguage, reusedCount, newCount: allEmails.length - reusedCount, nextIdentifier, cohortRespondents: new Set([...existingRespondents, ...outputRows.filter((row) => !row.isSelf).map((row) => pairKey(row.participantEmail, row.evaluatorEmail))]).size }, ready: blockers.length === 0 && !nothingNew };
+}
+
+export function analyzeProject(options = {}) { return options.stateRecords?.length ? analyzeLiveProject(options) : analyzeNewProject(options); }
 
 function textCell(value) { return { t: "s", v: String(value ?? "") }; }
 export function createProductionWorkbook(XLSX, analysis, projectName) {
