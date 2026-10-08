@@ -400,9 +400,9 @@ function analyzeNewProject({ participants = [], allocation = analyzeAllocation([
     const role = (ROLE_ORDER[a.role] ?? 99) - (ROLE_ORDER[b.role] ?? 99);
     return role || a.evaluatorEmail.localeCompare(b.evaluatorEmail);
   });
-  const byRole = {}; const byLanguage = {};
-  outputRows.forEach((row) => { byRole[row.role] = (byRole[row.role] || 0) + 1; byLanguage[row.language] = (byLanguage[row.language] || 0) + 1; });
-  return { blockers, warnings, conflicts, participantSummaries, outputRows, identifiers, identifierEvidence, canonicalNames, summary: { participants: normalizedParticipants.length, rows: outputRows.length, byRole, byLanguage, reusedCount, newCount: allEmails.length - reusedCount, nextIdentifier }, ready: blockers.length === 0 };
+  const byRole = {}; const byLanguage = {}; let selfEvaluationCount = 0;
+  outputRows.forEach((row) => { if (row.isSelf) selfEvaluationCount += 1; else byRole[row.role] = (byRole[row.role] || 0) + 1; byLanguage[row.language] = (byLanguage[row.language] || 0) + 1; });
+  return { blockers, warnings, conflicts, participantSummaries, outputRows, identifiers, identifierEvidence, canonicalNames, summary: { participants: normalizedParticipants.length, rows: outputRows.length, byRole, byLanguage, selfEvaluationCount, reusedCount, newCount: allEmails.length - reusedCount, nextIdentifier }, ready: blockers.length === 0 };
 }
 
 // Lift this single switch only after a controlled disposable-campaign test confirms
@@ -487,10 +487,10 @@ function analyzeLiveProject({ participants = [], allocation = analyzeAllocation(
   for (const email of allEmails) if (!identifiers[email]) { identifiers[email] = String(nextIdentifier++); identifierEvidence[email] = { identifier: identifiers[email], disposition: "new", records: [] }; }
   outputRows.forEach((row) => { row.identifier = identifiers[row.evaluatorEmail]; });
   outputRows.sort((a, b) => a.participantEmail.localeCompare(b.participantEmail) || Number(b.isSelf) - Number(a.isSelf) || (ROLE_ORDER[a.role] ?? 99) - (ROLE_ORDER[b.role] ?? 99) || a.evaluatorEmail.localeCompare(b.evaluatorEmail));
-  const byRole = {}; const byLanguage = {}; outputRows.forEach((row) => { byRole[row.role] = (byRole[row.role] || 0) + 1; byLanguage[row.language] = (byLanguage[row.language] || 0) + 1; });
+  const byRole = {}; const byLanguage = {}; let selfEvaluationCount = 0; outputRows.forEach((row) => { if (row.isSelf) selfEvaluationCount += 1; else byRole[row.role] = (byRole[row.role] || 0) + 1; byLanguage[row.language] = (byLanguage[row.language] || 0) + 1; });
   const existingRespondents = new Set(normalizedState.filter((record) => !record.participantEmail || record.email !== record.participantEmail).map((record) => pairKey(record.participantEmail, record.email)));
   const nothingNew = outputRows.length === 0;
-  return { ...baseline, blockers, warnings, skippedRows, heldBackRows, outputRows, identifiers, identifierEvidence, nothingNew, summary: { ...baseline.summary, participants: newParticipants.length + existingByParticipant.size, rows: outputRows.length, skippedRows: skippedRows.length, heldBackRows: heldBackRows.length, byRole, byLanguage, reusedCount, newCount: allEmails.length - reusedCount, nextIdentifier, cohortRespondents: new Set([...existingRespondents, ...outputRows.filter((row) => !row.isSelf).map((row) => pairKey(row.participantEmail, row.evaluatorEmail))]).size }, ready: blockers.length === 0 && !nothingNew };
+  return { ...baseline, blockers, warnings, skippedRows, heldBackRows, outputRows, identifiers, identifierEvidence, nothingNew, summary: { ...baseline.summary, participants: newParticipants.length + existingByParticipant.size, rows: outputRows.length, skippedRows: skippedRows.length, heldBackRows: heldBackRows.length, byRole, byLanguage, selfEvaluationCount, reusedCount, newCount: allEmails.length - reusedCount, nextIdentifier, cohortRespondents: new Set([...existingRespondents, ...outputRows.filter((row) => !row.isSelf).map((row) => pairKey(row.participantEmail, row.evaluatorEmail))]).size }, ready: blockers.length === 0 && !nothingNew };
 }
 
 export function analyzeProject(options = {}) { return options.stateRecords?.length ? analyzeLiveProject(options) : analyzeNewProject(options); }

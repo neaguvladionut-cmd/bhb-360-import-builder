@@ -27,6 +27,15 @@ test("live project exports a different participant's respondent and blocks campa
   assert(changed.blockers.some((item) => item.code === "criteria-conflict"));
 });
 
+test("role counters keep self-evaluation separate and reconcile exactly to exported rows", () => {
+  const participant = { id: "d210-summary", source: "d210-summary.xlsx", participantName: "D210 Bogdan", participantEmail: "bogdan@example.invalid", rows: [row("D210 Bogdan", "bogdan@example.invalid", "Autoevaluare", true), row("D210 Manager", "manager@example.invalid", "Manager"), row("D210 Peer", "peer@example.invalid", "Peer")] };
+  const analysis = analyzeProject({ participants: [participant], stateRecords: state, allocation: analyzeAllocation(state), projectName: "D210 Live" });
+  assert.equal(analysis.summary.selfEvaluationCount, 1);
+  assert.equal(analysis.summary.byRole.Manager, 1);
+  assert.equal(analysis.summary.byRole.Peer, 1);
+  assert.equal(analysis.summary.selfEvaluationCount + Object.values(analysis.summary.byRole).reduce((sum, count) => sum + count, 0), analysis.summary.rows);
+});
+
 test("near neighbours: same respondent for another participant exports, email case and spaces remain one pair", () => {
   const other = { id: "d210-other", source: "d210-other.xlsx", participantName: "D210 Bogdan", participantEmail: "bogdan@example.invalid", rows: [row("D210 Bogdan", "bogdan@example.invalid", "Autoevaluare", true), row("D210 Existing Manager", " MANAGER@example.invalid ", "Manager")] };
   const exported = analyzeProject({ participants: [other], stateRecords: state, allocation: analyzeAllocation(state), projectName: "D210 Live" });
