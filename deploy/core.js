@@ -410,6 +410,7 @@ function analyzeNewProject({ participants = [], allocation = analyzeAllocation([
 export const BLOCK_NEW_MANAGER_FOR_EXISTING_PARTICIPANT = true;
 
 function sameCriteria(left = [], right = []) { return Array.from({ length: CRITERIA_COUNT }, (_, i) => normalizeText(left[i]) === normalizeText(right[i])).every(Boolean); }
+function criteriaAgreeOrInherit(incoming = [], settled = []) { return Array.from({ length: CRITERIA_COUNT }, (_, i) => { const value = normalizeText(incoming[i]); return !value || value === normalizeText(settled[i]); }).every(Boolean); }
 function pairKey(participantEmail, evaluatorEmail) { return `${normalizeEmail(participantEmail)}|${normalizeEmail(evaluatorEmail)}`; }
 
 function stateIssue(code, record, extra = {}) {
@@ -442,10 +443,15 @@ function analyzeLiveProject({ participants = [], allocation = analyzeAllocation(
     const settledName = stateNames[0] || participant.participantName;
     if (normalizeText(participant.participantName) !== settledName) blockers.push(issue("participant-name-conflict", participant, null, { stateName: settledName, correctiveAction: "Folosește numele deja stabilit în proiect." }));
     const settledCriteria = stateCriteria.map((values) => values[0] || "");
-    const statePairs = new Map(state.map((record) => [pairKey(record.participantEmail, record.email), record]));
+    const statePairs = new Map();
+    for (const record of state) {
+      const key = pairKey(record.participantEmail, record.email);
+      if (statePairs.has(key)) blockers.push(stateIssue("state-duplicate-pair", record, { previous: statePairs.get(key) }));
+      else statePairs.set(key, record);
+    }
     for (const row of participant.rows) {
       if (row.isSelf) { skippedRows.push({ ...row, reason: "already-in-project" }); continue; }
-      if (!sameCriteria(row.criteria, settledCriteria)) { blockers.push(issue("criteria-conflict", participant, row, { correctiveAction: "Păstrează criteriile deja stabilite în proiect." })); continue; }
+      if (!criteriaAgreeOrInherit(row.criteria, settledCriteria)) { blockers.push(issue("criteria-conflict", participant, row, { correctiveAction: "Păstrează criteriile deja stabilite în proiect." })); continue; }
       const found = statePairs.get(pairKey(participant.participantEmail, row.evaluatorEmail));
       if (found) {
         const unchanged = found.role === row.role && found.language === row.language && sameCriteria(found.criteria, row.criteria);
@@ -469,7 +475,7 @@ function analyzeLiveProject({ participants = [], allocation = analyzeAllocation(
   outputRows.sort((a, b) => a.participantEmail.localeCompare(b.participantEmail) || Number(b.isSelf) - Number(a.isSelf) || (ROLE_ORDER[a.role] ?? 99) - (ROLE_ORDER[b.role] ?? 99) || a.evaluatorEmail.localeCompare(b.evaluatorEmail));
   const byRole = {}; const byLanguage = {}; outputRows.forEach((row) => { byRole[row.role] = (byRole[row.role] || 0) + 1; byLanguage[row.language] = (byLanguage[row.language] || 0) + 1; });
   const existingRespondents = new Set(normalizedState.filter((record) => !record.participantEmail || record.email !== record.participantEmail).map((record) => pairKey(record.participantEmail, record.email)));
-  const nothingNew = blockers.length === 0 && outputRows.length === 0;
+  const nothingNew = outputRows.length === 0;
   return { ...baseline, blockers, warnings, skippedRows, outputRows, identifiers, identifierEvidence, nothingNew, summary: { ...baseline.summary, participants: newParticipants.length + existingByParticipant.size, rows: outputRows.length, byRole, byLanguage, reusedCount, newCount: allEmails.length - reusedCount, nextIdentifier, cohortRespondents: new Set([...existingRespondents, ...outputRows.filter((row) => !row.isSelf).map((row) => pairKey(row.participantEmail, row.evaluatorEmail))]).size }, ready: blockers.length === 0 && !nothingNew };
 }
 
