@@ -15,6 +15,12 @@ This pack is for BHB/Trend consultants. It accepts multiple files from the parti
 5. Notice every English-language (`EN`) allocation. This is information, not a blocking error.
 6. Download the exact A:N production workbook only after all blockers are resolved.
 
+## Add people to a live project
+
+Load the existing A:N import and/or one or more `Accounts` exports together with the new respondent lists. Each state file stays visible and can be removed or replaced independently. The tool checks that production imports use the same campaign and exports only genuinely new respondent rows.
+
+A resent list never removes anybody: make removals, or changes to an existing role, language or criteria, in the 360 application. For a person already evaluated in the project, the existing import supplies their settled name and criteria; their incoming self row and any existing pair are shown as skipped. A new Manager for such a person is deliberately blocked until a controlled disposable-campaign test confirms how the legacy application handles it.
+
 The source ledger keeps every attempted file visible with its byte size, fingerprint state, detected adapter, row dispositions and normalization count. Local checking is shown honestly as pending and blocks production without claiming failure; a settled rejected/unreadable attempt remains blocking until the consultant explicitly removes it or selects a corrected replacement. The optional audit receipt can be downloaded after any source attempt, including a pending or blocked run.
 
 ## Automation admission gate
